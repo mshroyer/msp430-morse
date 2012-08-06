@@ -7,7 +7,7 @@
 
 #define flash __attribute__((section(".rodata")))
 
-#define ENC_SZ 4
+#define ENC_SZ 5
 #define KEY_PIN PUSH2
 #define LED_PIN GREEN_LED
 #define CODE_UNIT 100
@@ -44,7 +44,17 @@ const char morse_table[][ENC_SZ+2] = {
   MORSE_CHAR("W", ".--"),
   MORSE_CHAR("X", "-..-"),
   MORSE_CHAR("Y", "-.--"),
-  MORSE_CHAR("Z", "--..") 
+  MORSE_CHAR("Z", "--.."),
+  MORSE_CHAR("1", ".----"),
+  MORSE_CHAR("2", "..---"),
+  MORSE_CHAR("3", "...--"),
+  MORSE_CHAR("4", "....-"),
+  MORSE_CHAR("5", "....."),
+  MORSE_CHAR("6", "-...."),
+  MORSE_CHAR("7", "--..."),
+  MORSE_CHAR("8", "---.."),
+  MORSE_CHAR("9", "----."),
+  MORSE_CHAR("0", "-----")
 };
 
 int recv_i = 0;
