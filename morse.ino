@@ -4,7 +4,10 @@
  * Mark Shroyer
  * 4 August 2012
  */
- 
+
+#define flash __attribute__((section(".rodata")))
+
+#define ENC_SZ 4
 #define KEY_PIN PUSH2
 #define LED_PIN GREEN_LED
 #define CODE_UNIT 100
@@ -15,7 +18,7 @@
 
 #define IS_LONG_KEY(duration) ( (duration) >= 2 * CODE_UNIT )
 
-const char *morse_table[] = {
+const char morse_table[][ENC_SZ+2] = {
   MORSE_CHAR("A", ".-"),
   MORSE_CHAR("B", "-..."),
   MORSE_CHAR("C", "-.-."),
