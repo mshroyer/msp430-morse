@@ -117,20 +117,14 @@ void morse_in(int key_state, unsigned long now)
   if ( key_state == last_key_state )
     return;
 
-  /* Debounce */
   if ( now - last_key_millis < CODE_DEBOUNCE )
     return;
     
-  if ( ! key_state ) {
-    if ( IS_LONG_KEY(now - last_key_millis) ) {
+  if ( ! key_state && recv_i < BUF_SZ ) {
+    if ( IS_LONG_KEY(now - last_key_millis) )
       buf_recv[recv_i++] = '-';
-    } else {
+    else
       buf_recv[recv_i++] = '.';
-    }
-    
-    /* TODO better overrun handling */
-    if ( recv_i >= BUF_SZ )
-      recv_i = BUF_SZ - 1;
   }
   
   last_key_state = key_state;
@@ -155,7 +149,7 @@ void loop()
 
   morse_in(key_state, now);
   
-  if ( ! key_state && recv_i != 0 && IS_LONG_KEY(now - last_key_millis) ) {
+  if ( ! last_key_state && recv_i != 0 && IS_LONG_KEY(now - last_key_millis) ) {
     buf_recv[recv_i] = '\0';
     ch = morse_decode_char(buf_recv);
     if ( ch )
