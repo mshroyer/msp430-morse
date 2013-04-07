@@ -89,23 +89,23 @@ void update_centroids(unsigned long len)
 {
   unsigned long centroid_sums[2] = { 0, 0 };
   int centroid_matches[2] = { 0, 0 };
-  int i, c;
+  int i, j, k;
   
   buf_int[buf_int_i] = len;
-  
-  for ( i = 0; i < BUF_INT_SZ; i++ ) {
-    c = get_centroid(buf_int[i]);
-    centroid_sums[c] += buf_int[i];
-    centroid_matches[c]++;
-  }
-  for ( c = 0; c < 2; c++ ) {
-    centroid[c] = centroid_sums[c] / centroid_matches[c];
-  }
-  
-  /* Prevent convergence of the means */
-  if ( centroid[0] == centroid[1] )
-    centroid[1]++;
 
+  centroid[0] = 100;
+  centroid[1] = 300;
+  for ( i = 0; i < 100; i++ ) {
+    for ( j = 0; j < BUF_INT_SZ; j++ ) {
+      k = get_centroid(buf_int[j]);
+      centroid_sums[k] += buf_int[j];
+      centroid_matches[k]++;
+    }
+    for ( k = 0; k < 2; k++ ) {
+      centroid[k] = centroid_sums[k] / centroid_matches[k];
+    }
+  }
+  
   buf_int_i = (buf_int_i + 1) % BUF_INT_SZ;
 }
 
