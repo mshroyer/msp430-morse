@@ -2,16 +2,14 @@
  * morse.ino - Morse code keyer for the TI MSP430 LaunchPad
  *
  * Mark Shroyer
- * 4 August 2012
+ * 6 April 2013
  */
-
-#define flash __attribute__((section(".rodata")))
 
 #define ENC_SZ 5
 #define KEY_PIN PUSH2
 #define LED_PIN GREEN_LED
-#define CODE_UNIT 100
-#define CODE_DEBOUNCE 10
+#define CODE_UNIT 100 /* ms */
+#define CODE_DEBOUNCE 25 /* ms */
 #define BUF_SZ 8
 
 #define MORSE_CHAR(ch, enc) ch enc
@@ -59,11 +57,10 @@ const char morse_table[][ENC_SZ+2] = {
 
 int recv_i = 0;
 char buf_recv[BUF_SZ];
-char buf_decode[BUF_SZ];
 unsigned long last_key_millis;
-int last_key_state = HIGH;
+boolean last_key_state = false;
 
-const char *morse_encode(char ch)
+const char *morse_encode_char(char ch)
 {
   int i;
   
@@ -78,7 +75,7 @@ const char *morse_encode(char ch)
   return NULL;
 }
 
-char morse_decode(const char *enc)
+char morse_decode_char(const char *enc)
 {
   int i;
   
@@ -90,7 +87,7 @@ char morse_decode(const char *enc)
   return '\0';
 }
 
-void morse_send(const char *enc)
+void morse_out(const char *enc)
 {
   while ( enc != NULL ) {
     switch ( *(enc++) ) {
@@ -115,80 +112,59 @@ void morse_send(const char *enc)
   }
 }
 
-int morse_recv(int key_state)
+void morse_in(int key_state, unsigned long now)
 {
-  unsigned long now = millis();
-  
+  if ( key_state == last_key_state )
+    return;
+
   /* Debounce */
   if ( now - last_key_millis < CODE_DEBOUNCE )
-    return false;
+    return;
     
-  if ( key_state == last_key_state )
-    return false;
-    
-  switch ( key_state ) {
-  case LOW:
-    if ( IS_LONG_KEY( now - last_key_millis ) ) {
-      buf_recv[recv_i] = '\0';
-      strncpy(buf_decode, buf_recv, BUF_SZ-1);
-      recv_i = 0;
-    }
-    break;
-    
-  case HIGH:
-    if ( IS_LONG_KEY( now - last_key_millis ) ) {
+  if ( ! key_state ) {
+    if ( IS_LONG_KEY(now - last_key_millis) ) {
       buf_recv[recv_i++] = '-';
     } else {
       buf_recv[recv_i++] = '.';
     }
+    
     /* TODO better overrun handling */
     if ( recv_i >= BUF_SZ )
-      recv_i = 0;
-    break;
+      recv_i = BUF_SZ - 1;
   }
   
   last_key_state = key_state;
   last_key_millis = now;
-  return true;
-}
-
-void key_isr_rising()
-{
-  if ( morse_recv(HIGH) )
-    attachInterrupt(KEY_PIN, key_isr_falling, FALLING);
-}
-
-void key_isr_falling()
-{
-  if ( morse_recv(LOW) )
-    attachInterrupt(KEY_PIN, key_isr_rising, RISING);
 }
 
 void setup()
 {
   buf_recv[0] = '\0';
-  buf_decode[0] = '\0';
   
   pinMode(LED_PIN, OUTPUT);
   pinMode(KEY_PIN, INPUT_PULLUP);
   digitalWrite(LED_PIN, LOW);
-  attachInterrupt(KEY_PIN, key_isr_falling, FALLING);
   Serial.begin(9600);
 }
 
 void loop()
 {
+  unsigned long now = millis();
+  boolean key_state = ! digitalRead(KEY_PIN);
   char ch;
- 
-  ch = Serial.read();
-  if ( ch >= 0 )
-    morse_send(morse_encode(ch));
 
-  if ( buf_decode[0] != '\0' ) {
-    ch = morse_decode(buf_decode);
+  morse_in(key_state, now);
+  
+  if ( ! key_state && recv_i != 0 && IS_LONG_KEY(now - last_key_millis) ) {
+    buf_recv[recv_i] = '\0';
+    ch = morse_decode_char(buf_recv);
     if ( ch )
       Serial.write(ch);
-    buf_decode[0] = '\0';
+    recv_i = 0;
   }
+  
+  ch = Serial.read();
+  if ( ch >= 0 )
+    morse_out(morse_encode_char(ch));
 }
 
