@@ -2,7 +2,7 @@
  * morse.ino - Morse code keyer for the TI MSP430 LaunchPad
  *
  * Mark Shroyer
- * 6 April 2013
+ * 5 August 2013
  */
 
 #define ENC_SZ 5
@@ -63,10 +63,7 @@ unsigned long centroid[2] = { 100, 300 };
 
 static unsigned long distance(unsigned long a, unsigned long b)
 {
-  if ( b < a )
-    return a - b;
-  else
-    return b - a;
+  return abs(a - b);
 }
 
 int get_centroid(unsigned long len)
