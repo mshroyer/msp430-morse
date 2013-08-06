@@ -1,0 +1,1376 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Mathematica 9.0' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       157,          7]
+NotebookDataLength[     54524,       1367]
+NotebookOptionsPosition[     51604,       1268]
+NotebookOutlinePosition[     52012,       1286]
+CellTagsIndexPosition[     51969,       1283]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["\<\
+Adaptive Morse code recognition using k-means clustering\
+\>", "Title",
+ CellChangeTimes->{{3.5743418891198053`*^9, 3.5743419381054707`*^9}, {
+  3.574343253678709*^9, 3.574343255936654*^9}, {3.574348746556514*^9, 
+  3.574348750563684*^9}, {3.5743645073728237`*^9, 3.574364527943625*^9}, {
+  3.574383035087154*^9, 3.574383082215057*^9}, {3.57438326737609*^9, 
+  3.574383267622961*^9}, {3.574555507080762*^9, 3.574555529674592*^9}}],
+
+Cell["Algorithm prototype", "Subtitle",
+ CellChangeTimes->{{3.574341935748506*^9, 3.574341948207299*^9}, {
+  3.574348881985821*^9, 3.574348885950091*^9}}],
+
+Cell[TextData[{
+ "This notebook contains a prototype algorithm for adaptive morse code symbol \
+recognition based on k-means clustering, designed with the intent of \
+implementing non-iambic (\[OpenCurlyDoubleQuote]straight key\
+\[CloseCurlyDoubleQuote]) code recognition on the TI MSP430 LaunchPad \
+\[LongDash] namely, on the MSP430G2553 \[LongDash] and writing decoded \
+symbols out on the microcontroller\[CloseCurlyQuote]s UART.\n\nThis \
+application imposes certain constraints, most particularly a need to decode \
+symbols immediately after receipt even at the expense of accuracy (i.e., no \
+lookahead is possible), as well as limitations on math performance and \
+available memory (the MSP430G2553 has only 512 bytes of RAM). The k-means \
+clustering algorithm is a good fit for adaptive interval recognition under \
+these constraints, as it relies on only simple arithmetic and does not impose \
+a large code or memory overhead. However, since we will be running the \
+algorithm against a rolling data set, some modifications are required in \
+order to prevent degenerate behavior.\n\nThe \[OpenCurlyDoubleQuote]data\
+\[CloseCurlyDoubleQuote] subdirectory accompanying this notebook includes a \
+number of example datasets taken by keying the LaunchPad\[CloseCurlyQuote]s \
+pushbutton. Each dataset is represented by a CSV file in which each row \
+represents a key press interval; the first column is the interval\
+\[CloseCurlyQuote]s start time, and the second is the end time. These data \
+sets come already debounced. A corresponding TXT file contains the decoded \
+symbols for the set. Functions included in this notebook provide quantitative \
+analysis of the recognition algorithm\[CloseCurlyQuote]s accuracy by \
+comparing results against the contents of these TXT files.\n\n",
+ StyleBox["Mark Shroyer <code@markshroyer.com>\n8 April 2013",
+  FontSlant->"Italic"]
+}], "Text",
+ CellChangeTimes->{{3.574341965631239*^9, 3.574342062653096*^9}, {
+  3.574354988985526*^9, 3.574355000054325*^9}, {3.5743610636151867`*^9, 
+  3.574361254346033*^9}, {3.5743612871305037`*^9, 3.574361548660953*^9}, {
+  3.5743616249938087`*^9, 3.574361713706317*^9}, {3.574361784880208*^9, 
+  3.5743618257473507`*^9}, {3.5743619314831657`*^9, 3.574362017473185*^9}, {
+  3.5743620633490667`*^9, 3.574362088204022*^9}, {3.574362120191897*^9, 
+  3.57436234953566*^9}, {3.57437557060912*^9, 3.5743755716201353`*^9}, {
+  3.574545898649125*^9, 3.574545899275466*^9}, {3.574546192618815*^9, 
+  3.574546193522872*^9}}],
+
+Cell[CellGroupData[{
+
+Cell["Utility functions", "Section",
+ CellChangeTimes->{{3.5743420866835318`*^9, 3.574342095200286*^9}, {
+  3.5743548730210876`*^9, 3.5743548774674273`*^9}, {3.574359833177803*^9, 
+  3.574359833847501*^9}}],
+
+Cell["\<\
+The following functions do not implement the morse code recognition algorithm \
+itself, but will be useful for testing and analyzing the performance of the \
+algorithm.\
+\>", "Text",
+ CellChangeTimes->{{3.574354879635304*^9, 3.57435492011176*^9}}],
+
+Cell[CellGroupData[{
+
+Cell["Data import", "Subsection",
+ CellChangeTimes->{{3.574354840118065*^9, 3.5743548514760513`*^9}}],
+
+Cell["\<\
+Imports the named sample dataset from its CSV file. The data represents \
+individual pushbutton presses; each entry in the first column indicates the \
+time in milliseconds at which the press began, and the second column the time \
+when it ended:\
+\>", "Text",
+ CellChangeTimes->{{3.574342182969308*^9, 3.57434219832452*^9}, {
+  3.574342426204811*^9, 3.574342477885592*^9}, {3.574342558534095*^9, 
+  3.574342599021397*^9}, {3.574352588704632*^9, 3.5743525906568813`*^9}, {
+  3.574359822489167*^9, 3.574359822783764*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"MessageFileName", "[", 
+   RowBox[{"messageName_", ",", "extension_"}], "]"}], ":=", 
+  RowBox[{"FileNameJoin", "[", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"NotebookDirectory", "[", "]"}], ",", "\"\<data\>\"", ",", 
+     RowBox[{"messageName", "<>", "\"\<.\>\"", "<>", "extension"}]}], "}"}], 
+   "]"}]}]], "Input",
+ CellChangeTimes->{{3.574895508514967*^9, 3.574895544796842*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ImportMessage", "[", "messageName_", "]"}], ":=", 
+  RowBox[{"With", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"message", "=", 
+      RowBox[{"Import", "[", 
+       RowBox[{
+        RowBox[{"MessageFileName", "[", 
+         RowBox[{"messageName", ",", "\"\<csv\>\""}], "]"}], ",", 
+        "\"\<CSV\>\""}], "]"}]}], "}"}], ",", "\[IndentingNewLine]", 
+    RowBox[{"message", "-", 
+     RowBox[{"Min", "[", "message", "]"}]}]}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.574342098827403*^9, 3.57434214547425*^9}, {
+  3.574342206514002*^9, 3.5743422246871643`*^9}, {3.57434236240989*^9, 
+  3.5743424095465593`*^9}, {3.574349234496747*^9, 3.574349274544285*^9}, {
+  3.5743749519018097`*^9, 3.5743750002198153`*^9}, {3.574895382749103*^9, 
+  3.574895385634818*^9}, {3.574895556542117*^9, 3.574895563148635*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ImportText", "[", "messageName_", "]"}], ":=", 
+  RowBox[{"Import", "[", 
+   RowBox[{"MessageFileName", "[", 
+    RowBox[{"messageName", ",", "\"\<txt\>\""}], "]"}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.5748953872028646`*^9, 3.574895437393593*^9}, {
+  3.574895569803978*^9, 3.5748955833396797`*^9}}],
+
+Cell["\<\
+Constructs a sequence from multiple data sets, separated with (by default) \
+two seconds of silence:\
+\>", "Text",
+ CellChangeTimes->{{3.574353788179586*^9, 3.5743538335535393`*^9}, {
+  3.574354018505776*^9, 3.5743540221041937`*^9}, {3.574359817592997*^9, 
+  3.574359817863813*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ImportMessages", "[", 
+   RowBox[{"messageNames_", ",", 
+    RowBox[{"OptionsPattern", "[", 
+     RowBox[{"{", 
+      RowBox[{"space", "\[Rule]", "2000"}], "}"}], "]"}]}], "]"}], ":=", 
+  RowBox[{"Module", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"result", "=", 
+      RowBox[{"{", "}"}]}], "}"}], ",", 
+    RowBox[{
+     RowBox[{
+      RowBox[{
+       RowBox[{"(", 
+        RowBox[{"With", "[", 
+         RowBox[{
+          RowBox[{"{", 
+           RowBox[{"offset", "=", 
+            RowBox[{"If", "[", 
+             RowBox[{
+              RowBox[{
+               RowBox[{"Max", "[", "result", "]"}], ">", "0"}], ",", 
+              RowBox[{
+               RowBox[{"Max", "[", "result", "]"}], "+", 
+               RowBox[{"OptionValue", "[", "space", "]"}]}], ",", "0"}], 
+             "]"}]}], "}"}], ",", 
+          RowBox[{"result", "=", 
+           RowBox[{"Join", "[", 
+            RowBox[{"result", ",", 
+             RowBox[{
+              RowBox[{"ImportMessage", "[", "#", "]"}], "+", "offset"}]}], 
+            "]"}]}]}], "]"}], ")"}], "&"}], "/@", "messageNames"}], ";", 
+     "result"}]}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.574352592140423*^9, 3.574352661845215*^9}, {
+  3.574352817491282*^9, 3.574352828059092*^9}, {3.5743529401163282`*^9, 
+  3.574353004922962*^9}, {3.57435305063306*^9, 3.5743530684016733`*^9}, {
+  3.574353107683275*^9, 3.574353110379094*^9}, {3.574353204507934*^9, 
+  3.57435324971268*^9}, {3.574353393639514*^9, 3.574353481796962*^9}, {
+  3.574353619839081*^9, 3.5743536205889673`*^9}, {3.574353656101461*^9, 
+  3.57435372692312*^9}, {3.574353759758169*^9, 3.574353767941895*^9}, {
+  3.574353831404361*^9, 3.5743538314923058`*^9}, {3.574354004756095*^9, 
+  3.5743540134435263`*^9}, {3.574354240792651*^9, 3.574354258118487*^9}, {
+  3.574354406293676*^9, 3.574354421509347*^9}, {3.5743544530191383`*^9, 
+  3.574354486290039*^9}, {3.574374958458699*^9, 3.5743749713218937`*^9}, {
+  3.5743750056074743`*^9, 3.5743750175364656`*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ImportTexts", "[", "messageNames_", "]"}], ":=", 
+  RowBox[{"StringJoin", "[", 
+   RowBox[{"Riffle", "[", 
+    RowBox[{
+     RowBox[{"ImportText", "/@", "messageNames"}], ",", "\"\< \>\""}], "]"}], 
+   "]"}]}]], "Input",
+ CellChangeTimes->{{3.5748956050517683`*^9, 3.574895629825177*^9}, {
+  3.574895710961287*^9, 3.57489572098384*^9}, {3.574895812312809*^9, 
+  3.574895825759284*^9}}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Visual analysis", "Subsection",
+ CellChangeTimes->{{3.5743548573413563`*^9, 3.574354862475484*^9}}],
+
+Cell["\<\
+Plots a data set for visual analysis of morse code transmissions:\
+\>", "Text",
+ CellChangeTimes->{{3.57434692175609*^9, 3.5743469504311037`*^9}, {
+  3.574359810017421*^9, 3.574359810311894*^9}}],
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"messageWrap", "=", "5000"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"messageLineHeight", " ", "=", " ", "400"}], 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"MillisToPoint", "[", "millis_", "]"}], ":=", 
+  RowBox[{"{", 
+   RowBox[{
+    RowBox[{"Mod", "[", 
+     RowBox[{"millis", ",", "messageWrap"}], "]"}], ",", 
+    RowBox[{
+     RowBox[{"-", 
+      RowBox[{"Floor", "[", 
+       RowBox[{"millis", "/", "messageWrap"}], "]"}]}], "*", 
+     "messageLineHeight"}]}], "}"}]}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"MarkLine", "[", 
+   RowBox[{"start_", ",", "end_"}], "]"}], ":=", "\[IndentingNewLine]", 
+  RowBox[{"With", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{
+      RowBox[{"startPoint", "=", 
+       RowBox[{"MillisToPoint", "[", "start", "]"}]}], ",", 
+      RowBox[{"endPoint", "=", 
+       RowBox[{"MillisToPoint", "[", "end", "]"}]}]}], "}"}], ",", 
+    "\[IndentingNewLine]", 
+    RowBox[{"If", "[", 
+     RowBox[{
+      RowBox[{
+       RowBox[{"startPoint", "[", 
+        RowBox[{"[", "2", "]"}], "]"}], "\[Equal]", 
+       RowBox[{"endPoint", "[", 
+        RowBox[{"[", "2", "]"}], "]"}]}], ",", "\[IndentingNewLine]", 
+      RowBox[{"{", 
+       RowBox[{"Line", "[", 
+        RowBox[{"{", 
+         RowBox[{"startPoint", ",", "endPoint"}], "}"}], "]"}], "}"}], ",", 
+      "\[IndentingNewLine]", 
+      RowBox[{"{", 
+       RowBox[{
+        RowBox[{"Line", "[", 
+         RowBox[{"{", 
+          RowBox[{"startPoint", ",", 
+           RowBox[{"{", 
+            RowBox[{"messageWrap", ",", 
+             RowBox[{"startPoint", "[", 
+              RowBox[{"[", "2", "]"}], "]"}]}], "}"}]}], "}"}], "]"}], ",", 
+        "\[IndentingNewLine]", 
+        RowBox[{"Line", "[", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"0", ",", 
+             RowBox[{"endPoint", "[", 
+              RowBox[{"[", "2", "]"}], "]"}]}], "}"}], ",", "endPoint"}], 
+          "}"}], "]"}]}], "}"}]}], "]"}]}], "]"}]}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"PlotMessage", "[", 
+   RowBox[{"message_", ",", 
+    RowBox[{"OptionsPattern", "[", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{"marks", "\[Rule]", 
+        RowBox[{"{", "}"}]}], ",", 
+       RowBox[{"letters", "\[Rule]", 
+        RowBox[{"{", "}"}]}]}], "}"}], "]"}]}], "]"}], ":=", 
+  RowBox[{"With", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"endY", "=", 
+      RowBox[{
+       RowBox[{
+        RowBox[{"MillisToPoint", "[", 
+         RowBox[{"Max", "[", "message", "]"}], "]"}], "[", 
+        RowBox[{"[", "2", "]"}], "]"}], "-", "messageLineHeight"}]}], "}"}], 
+    ",", 
+    RowBox[{"Graphics", "[", 
+     RowBox[{
+      RowBox[{"Join", "[", 
+       RowBox[{
+        RowBox[{"Flatten", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{
+            RowBox[{"(", 
+             RowBox[{"MarkLine", "@@", "#"}], ")"}], "&"}], "/@", "message"}],
+           ",", "1"}], "]"}], ",", "\[IndentingNewLine]", 
+        RowBox[{"{", "Blue", "}"}], ",", 
+        RowBox[{"Map", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"(", 
+            RowBox[{"Text", "[", 
+             RowBox[{
+              RowBox[{"#", "[", 
+               RowBox[{"[", "2", "]"}], "]"}], ",", 
+              RowBox[{
+               RowBox[{"MillisToPoint", "[", 
+                RowBox[{"#", "[", 
+                 RowBox[{"[", "1", "]"}], "]"}], "]"}], "+", 
+               RowBox[{"{", 
+                RowBox[{"0", ",", 
+                 RowBox[{"-", "50"}]}], "}"}]}]}], "]"}], ")"}], "&"}], ",", 
+          RowBox[{"OptionValue", "[", "marks", "]"}]}], "]"}], ",", 
+        "\[IndentingNewLine]", 
+        RowBox[{"{", "Red", "}"}], ",", 
+        RowBox[{"Map", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{"(", 
+            RowBox[{"Text", "[", 
+             RowBox[{
+              RowBox[{"#", "[", 
+               RowBox[{"[", "2", "]"}], "]"}], ",", 
+              RowBox[{
+               RowBox[{"MillisToPoint", "[", 
+                RowBox[{"#", "[", 
+                 RowBox[{"[", "1", "]"}], "]"}], "]"}], "+", 
+               RowBox[{"{", 
+                RowBox[{"0", ",", 
+                 RowBox[{"-", "150"}]}], "}"}]}]}], "]"}], ")"}], "&"}], ",", 
+          
+          RowBox[{"OptionValue", "[", "letters", "]"}]}], "]"}], ",", 
+        "\[IndentingNewLine]", 
+        RowBox[{"{", 
+         RowBox[{"LightGray", ",", 
+          RowBox[{"Line", "[", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"{", 
+              RowBox[{"0", ",", "0"}], "}"}], ",", 
+             RowBox[{"{", 
+              RowBox[{"0", ",", "endY"}], "}"}]}], "}"}], "]"}], ",", 
+          RowBox[{"Line", "[", 
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"{", 
+              RowBox[{"messageWrap", ",", "0"}], "}"}], ",", 
+             RowBox[{"{", 
+              RowBox[{"messageWrap", ",", "endY"}], "}"}]}], "}"}], "]"}]}], 
+         "}"}]}], "]"}], ",", 
+      RowBox[{"BaseStyle", "\[Rule]", 
+       RowBox[{"{", 
+        RowBox[{"FontSize", "\[Rule]", "16"}], "}"}]}]}], "]"}]}], 
+   "]"}]}]}], "Input",
+ CellChangeTimes->CompressedData["
+1:eJwd0V9IU3EUB/CLMVFKM3pI0ZTUEmwNshIZKgpKOpguaRtOYXNzeCd5zRq6
+UDEjHZLzil1lSaaFOmrYItmkCBtD7WFrWQvTSrRyOAbln3xoRtC+v4fD5+XA
+98s5J9SNFdoIiqL44YFFhUnttx8GC/tPLxM3rOfN0FHvJn4ySGywSiJ6DqWD
+lVQX9jjqAFyObTsIZxyqGPjxCX0UCp5yxEyZMhEmnXRnwIwvxmL4XUuVQE+N
+XwwNZd5yOHZj8jJMH/UQI34FlXDgz6QG8kW2OmjJU+lgwg8nA5utW9fgsDqr
+BTZKp1vhiIzuhCmVx+5CJttkJv3lqQ9gIEtogVGB41Mw+/BQaXfYXL1IDhlL
+RxV0Bo9Uw75XPk036ftYC3njh5rgO8GjLrgYYqbgytltYtne2jSkxi6+hGvr
+sllonxtxQcmGZgFuFs17Yfyqzgevd0b+hNXD87+hl/0cgjH/Ss8ZkXN/VwFH
+/fELsIDmvYGtYkX+nbAN7H4BfKvv1cEz9TkG6Eynv0HPvR1i6qmAH3KvrwSg
+y/1iB25l2v/CdXVcci/uyU6kwaXobTV8T/NrobDZpYfF8lstkBe9IuHCjtcI
+6uCSr8cIhcq0HqiY/WqCH0oaWHjJLeZghVRFfKa4ajXjP039NsiEFmegtfyC
+E95MNM3B4ARL/A/MLIFT
+  "]]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Error quantification", "Subsection",
+ CellChangeTimes->{{3.574377043022442*^9, 3.5743770472784767`*^9}, {
+  3.574894902503099*^9, 3.5748949420690393`*^9}}],
+
+Cell["\<\
+Functions for quantifying the quality of the algorithm\[CloseCurlyQuote]s \
+output against expected results.\
+\>", "Text",
+ CellChangeTimes->{{3.574894946269594*^9, 3.574894990044059*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"MessageAccuracy", "[", 
+   RowBox[{"decoded_", ",", "expected_"}], "]"}], ":=", 
+  RowBox[{"N", "[", 
+   RowBox[{
+    RowBox[{"EditDistance", "[", 
+     RowBox[{"expected", ",", "decoded"}], "]"}], "/", 
+    RowBox[{"StringLength", "[", "expected", "]"}]}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.574895029438806*^9, 3.57489504212578*^9}, {
+  3.5748950775830803`*^9, 3.574895142122035*^9}}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Miscellaneous", "Subsection",
+ CellChangeTimes->{{3.5748949307046623`*^9, 3.5748949321047983`*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"RepeatList", "[", 
+   RowBox[{"lst_", ",", "n_"}], "]"}], ":=", 
+  RowBox[{"Module", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"result", "=", 
+      RowBox[{"{", "}"}]}], "}"}], ",", 
+    RowBox[{
+     RowBox[{"Do", "[", 
+      RowBox[{
+       RowBox[{"result", "=", 
+        RowBox[{"Join", "[", 
+         RowBox[{"result", ",", "lst"}], "]"}]}], ",", 
+       RowBox[{"{", 
+        RowBox[{"i", ",", "n"}], "}"}]}], "]"}], ";", "result"}]}], 
+   "]"}]}]], "Input"]
+}, Open  ]]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Morse code symbol definitions", "Section",
+ CellChangeTimes->{{3.574358373606827*^9, 3.5743583806558332`*^9}, {
+  3.5743598437139263`*^9, 3.5743598526471252`*^9}}],
+
+Cell["Our morse code alphabet:", "Text",
+ CellChangeTimes->{{3.574359485494166*^9, 3.574359491469467*^9}, {
+  3.574359734500511*^9, 3.574359734881435*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"morseSymbols", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"\"\<A\>\"", ",", "\"\<.-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<B\>\"", ",", "\"\<-...\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<C\>\"", ",", "\"\<-.-.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<D\>\"", ",", "\"\<-..\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<E\>\"", ",", "\"\<.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<F\>\"", ",", "\"\<..-.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<G\>\"", ",", "\"\<--.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<H\>\"", ",", "\"\<....\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<I\>\"", ",", "\"\<..\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<J\>\"", ",", "\"\<.---\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<K\>\"", ",", "\"\<-.-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<L\>\"", ",", "\"\<.-..\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<M\>\"", ",", "\"\<--\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<N\>\"", ",", "\"\<-.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<O\>\"", ",", "\"\<---\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<P\>\"", ",", "\"\<.--.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<Q\>\"", ",", "\"\<--.-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<R\>\"", ",", "\"\<.-.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<S\>\"", ",", "\"\<...\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<T\>\"", ",", "\"\<-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<U\>\"", ",", "\"\<..-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<V\>\"", ",", "\"\<...-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<W\>\"", ",", "\"\<.--\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<X\>\"", ",", "\"\<-..-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<Y\>\"", ",", "\"\<-.--\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<Z\>\"", ",", "\"\<--..\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<1\>\"", ",", "\"\<.----\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<2\>\"", ",", "\"\<..---\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<3\>\"", ",", "\"\<...--\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<4\>\"", ",", "\"\<....-\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<5\>\"", ",", "\"\<.....\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<6\>\"", ",", "\"\<-....\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<7\>\"", ",", "\"\<--...\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<8\>\"", ",", "\"\<---..\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<9\>\"", ",", "\"\<----.\>\""}], "}"}], ",", 
+     RowBox[{"{", 
+      RowBox[{"\"\<0\>\"", ",", "\"\<-----\>\""}], "}"}]}], "}"}]}], 
+  ";"}]], "Input",
+ CellChangeTimes->{{3.5743583859780607`*^9, 3.5743584278316507`*^9}, {
+  3.574358541336974*^9, 3.57435855334315*^9}, {3.5743586039565353`*^9, 
+  3.574358627812297*^9}, {3.57435938632829*^9, 3.574359386759798*^9}}],
+
+Cell["\<\
+This function looks up a morse code symbol (given as a strings of periods and \
+hyphens), or returns \[OpenCurlyDoubleQuote]?\[CloseCurlyDoubleQuote] if \
+there is no match:\
+\>", "Text",
+ CellChangeTimes->{{3.574359737943986*^9, 3.5743597800809298`*^9}, {
+  3.5743835657087383`*^9, 3.574383569302351*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"DecodeSymbol", "[", "symbol_", "]"}], ":=", 
+  RowBox[{"With", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"match", "=", 
+      RowBox[{"Select", "[", 
+       RowBox[{"morseSymbols", ",", 
+        RowBox[{
+         RowBox[{
+          RowBox[{"#", "[", 
+           RowBox[{"[", "2", "]"}], "]"}], "\[Equal]", "symbol"}], "&"}], ",",
+         "1"}], "]"}]}], "}"}], ",", "\[IndentingNewLine]", 
+    RowBox[{"If", "[", 
+     RowBox[{
+      RowBox[{
+       RowBox[{"Length", "[", "match", "]"}], ">", "0"}], ",", 
+      RowBox[{
+       RowBox[{"First", "[", "match", "]"}], "[", 
+       RowBox[{"[", "1", "]"}], "]"}], ",", "\"\<?\>\""}], "]"}]}], 
+   "]"}]}]], "Input",
+ CellChangeTimes->{{3.57435868433464*^9, 3.5743587105887823`*^9}, {
+  3.5743590471059837`*^9, 3.5743590721165648`*^9}, {3.5743591526641617`*^9, 
+  3.574359260622958*^9}, {3.574359337917519*^9, 3.574359391562399*^9}, {
+  3.574377509319489*^9, 3.5743775100728188`*^9}, {3.5743835727490597`*^9, 
+  3.574383572999008*^9}, {3.5743845182904787`*^9, 3.574384521767812*^9}}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Recognition algorithm", "Section",
+ CellChangeTimes->{{3.5743595098872423`*^9, 3.574359515980921*^9}, {
+  3.5743595566553*^9, 3.5743595575882893`*^9}, {3.5743598654335403`*^9, 
+  3.574359868182374*^9}, {3.5743759629491577`*^9, 3.574375964231607*^9}}],
+
+Cell["\<\
+The algorithm for recognition of morse code marks and symbols is given below.\
+\
+\>", "Text",
+ CellChangeTimes->{{3.5743595616300583`*^9, 3.574359590299924*^9}, {
+  3.574375967217999*^9, 3.57437597363555*^9}, {3.574377306857457*^9, 
+  3.574377313157061*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ClassifyIntervals", "[", "message_", "]"}], ":=", 
+  RowBox[{"Map", "[", 
+   RowBox[{
+    RowBox[{
+     RowBox[{"(", 
+      RowBox[{"Append", "[", 
+       RowBox[{"#", ",", 
+        RowBox[{"If", "[", 
+         RowBox[{
+          RowBox[{
+           RowBox[{
+            RowBox[{"#", "[", 
+             RowBox[{"[", "2", "]"}], "]"}], "-", 
+            RowBox[{"#", "[", 
+             RowBox[{"[", "1", "]"}], "]"}]}], ">", "150"}], ",", "\"\<-\>\"",
+           ",", "\"\<.\>\""}], "]"}]}], "]"}], ")"}], "&"}], ",", "message"}],
+    "]"}]}]], "Input",
+ CellChangeTimes->{{3.574360714619701*^9, 3.5743607835382977`*^9}, {
+  3.574360819881336*^9, 3.574360820397662*^9}, {3.574375261972484*^9, 
+  3.574375267519936*^9}}],
+
+Cell["\<\
+Given an existing pair of k-means centroids, classifies an interval of the \
+specified duration would represent either a \[OpenCurlyDoubleQuote]dit\
+\[CloseCurlyDoubleQuote] or a \[OpenCurlyDoubleQuote]dah\
+\[CloseCurlyDoubleQuote]:\
+\>", "Text",
+ CellChangeTimes->{{3.574377258835496*^9, 3.5743772910896397`*^9}, {
+  3.5743774611861877`*^9, 3.574377462221874*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ClassifyMark", "[", 
+   RowBox[{"centroids_", ",", "duration_"}], "]"}], ":=", 
+  RowBox[{"If", "[", 
+   RowBox[{
+    RowBox[{"duration", ">", 
+     RowBox[{"Mean", "[", "centroids", "]"}]}], ",", "\"\<-\>\"", ",", 
+    "\"\<.\>\""}], "]"}]}]], "Input"],
+
+Cell["\<\
+Recalculates the k-means centroids for an updated interval buffer:\
+\>", "Text",
+ CellChangeTimes->{{3.57437733723347*^9, 3.5743773629059772`*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"UpdateCentroids", "[", 
+   RowBox[{"centroids_", ",", "intervals_"}], "]"}], ":=", 
+  RowBox[{"Module", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"result", "=", "centroids"}], "}"}], ",", "\[IndentingNewLine]", 
+    
+    RowBox[{
+     RowBox[{"Do", "[", 
+      RowBox[{
+       RowBox[{"result", "=", 
+        RowBox[{"N", "[", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"Mean", "[", 
+            RowBox[{"Select", "[", 
+             RowBox[{"intervals", ",", 
+              RowBox[{
+               RowBox[{"#", "\[LessEqual]", 
+                RowBox[{"Mean", "[", "result", "]"}]}], "&"}]}], "]"}], "]"}],
+            ",", 
+           RowBox[{"Mean", "[", 
+            RowBox[{"Select", "[", 
+             RowBox[{"intervals", ",", 
+              RowBox[{
+               RowBox[{"#", ">", 
+                RowBox[{"Mean", "[", "result", "]"}]}], "&"}]}], "]"}], 
+            "]"}]}], "}"}], "]"}]}], ",", 
+       RowBox[{"{", "5", "}"}]}], "]"}], ";", "\[IndentingNewLine]", 
+     "result"}]}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.574384338221981*^9, 3.574384364424014*^9}, {
+  3.574384407299634*^9, 3.574384486184194*^9}, {3.574384546020535*^9, 
+  3.574384609462306*^9}, {3.574384696022678*^9, 3.574384730531556*^9}, {
+  3.574384761991184*^9, 3.574384795657282*^9}, {3.574384833251507*^9, 
+  3.574384839457693*^9}, {3.5743848785190277`*^9, 3.574384970622836*^9}, {
+  3.574385030927268*^9, 3.574385045993204*^9}}],
+
+Cell["\<\
+Classifies an entire message, grouping marks by apparent letter membership. \
+Returns a list of lists, each nested list containing a letter\
+\[CloseCurlyQuote]s marks.\
+\>", "Text",
+ CellChangeTimes->{{3.5743774671226053`*^9, 3.5743774688676767`*^9}, {
+  3.57437769016114*^9, 3.574377725140712*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"ClassifyMessage", "[", "message_", "]"}], ":=", 
+  RowBox[{"Module", "[", 
+   RowBox[{
+    RowBox[{"{", "\[IndentingNewLine]", 
+     RowBox[{"(*", " ", 
+      RowBox[{
+       RowBox[{"Current", " ", "k"}], "-", 
+       RowBox[{
+       "means", " ", "centroids", " ", "for", " ", "this", " ", 
+        "iteration"}]}], " ", "*)"}], "\[IndentingNewLine]", 
+     RowBox[{
+      RowBox[{"centroids", "=", 
+       RowBox[{"{", 
+        RowBox[{"100", ",", "300"}], "}"}]}], ",", "\[IndentingNewLine]", 
+      RowBox[{"(*", " ", 
+       RowBox[{
+       "Buffered", " ", "intervals", " ", "for", " ", "centroid", " ", 
+        "calculation"}], " ", "*)"}], "\[IndentingNewLine]", 
+      RowBox[{"intervals", "=", 
+       RowBox[{"RepeatList", "[", 
+        RowBox[{
+         RowBox[{"{", 
+          RowBox[{"100", ",", "300"}], "}"}], ",", "5"}], "]"}]}], ",", 
+      "\[IndentingNewLine]", 
+      RowBox[{"(*", " ", 
+       RowBox[{
+        RowBox[{"Resulting", " ", "classified", " ", "mark", " ", "values"}], 
+        ",", " ", 
+        RowBox[{"grouped", " ", "into", " ", "apparent", " ", "letters"}]}], 
+       " ", "*)"}], "\[IndentingNewLine]", 
+      RowBox[{"resultMarks", "=", 
+       RowBox[{"{", "}"}]}], ",", "\[IndentingNewLine]", 
+      RowBox[{"(*", " ", 
+       RowBox[{
+       "Incoming", " ", "marks", " ", "awaiting", " ", "grouping", " ", 
+        "into", " ", "new", " ", "letter"}], " ", "*)"}], 
+      "\[IndentingNewLine]", 
+      RowBox[{"curMarks", "=", 
+       RowBox[{"{", "}"}]}], ",", "\[IndentingNewLine]", 
+      RowBox[{"(*", " ", 
+       RowBox[{
+        RowBox[{"End", " ", "time", " ", "of", " ", "previous", " ", "mark"}],
+         ",", " ", 
+        RowBox[{"in", " ", "milliseconds"}]}], " ", "*)"}], 
+      "\[IndentingNewLine]", 
+      RowBox[{"prevEnd", "=", "0"}]}], "}"}], ",", "\[IndentingNewLine]", 
+    RowBox[{
+     RowBox[{"Map", "[", 
+      RowBox[{
+       RowBox[{"Function", "[", 
+        RowBox[{"mark", ",", "\[IndentingNewLine]", 
+         RowBox[{"With", "[", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{
+             RowBox[{"start", "=", 
+              RowBox[{"mark", "[", 
+               RowBox[{"[", "1", "]"}], "]"}]}], ",", 
+             RowBox[{"end", "=", 
+              RowBox[{"mark", "[", 
+               RowBox[{"[", "2", "]"}], "]"}]}]}], "}"}], ",", 
+           "\[IndentingNewLine]", 
+           RowBox[{"(*", " ", 
+            RowBox[{
+            "Detect", " ", "end", " ", "of", " ", "previous", " ", "letter"}],
+             " ", "*)"}], "\[IndentingNewLine]", 
+           RowBox[{
+            RowBox[{"If", "[", 
+             RowBox[{
+              RowBox[{
+               RowBox[{"ClassifyMark", "[", 
+                RowBox[{"centroids", ",", 
+                 RowBox[{"start", "-", "prevEnd"}]}], "]"}], "\[Equal]", 
+               "\"\<-\>\""}], ",", "\[IndentingNewLine]", 
+              RowBox[{
+               RowBox[{"resultMarks", "=", 
+                RowBox[{"Append", "[", 
+                 RowBox[{"resultMarks", ",", "curMarks"}], "]"}]}], ";", 
+               "\[IndentingNewLine]", 
+               RowBox[{"curMarks", "=", 
+                RowBox[{"{", "}"}]}]}]}], "]"}], ";", "\[IndentingNewLine]", 
+            RowBox[{"With", "[", 
+             RowBox[{
+              RowBox[{"{", 
+               RowBox[{"markType", "=", 
+                RowBox[{"ClassifyMark", "[", 
+                 RowBox[{"centroids", ",", 
+                  RowBox[{"end", "-", "start"}]}], "]"}]}], "}"}], ",", 
+              "\[IndentingNewLine]", 
+              RowBox[{
+               RowBox[{"curMarks", "=", 
+                RowBox[{"Append", "[", 
+                 RowBox[{"curMarks", ",", "markType"}], "]"}]}], ";", 
+               "\[IndentingNewLine]", 
+               RowBox[{"prevEnd", "=", "end"}]}]}], "]"}], ";", 
+            "\[IndentingNewLine]", 
+            RowBox[{"intervals", "=", 
+             RowBox[{"Append", "[", 
+              RowBox[{
+               RowBox[{"intervals", "[", 
+                RowBox[{"[", 
+                 RowBox[{"2", ";;"}], "]"}], "]"}], ",", 
+               RowBox[{"end", "-", "start"}]}], "]"}]}], ";", 
+            "\[IndentingNewLine]", 
+            RowBox[{"centroids", "=", 
+             RowBox[{"UpdateCentroids", "[", 
+              RowBox[{"centroids", ",", "intervals"}], "]"}]}]}]}], "]"}]}], 
+        "]"}], ",", "message"}], "]"}], ";", "\[IndentingNewLine]", 
+     RowBox[{"resultMarks", "=", 
+      RowBox[{"Append", "[", 
+       RowBox[{"resultMarks", ",", "curMarks"}], "]"}]}], ";", 
+     "\[IndentingNewLine]", "resultMarks"}]}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.574354771931692*^9, 3.5743547844157887`*^9}, {
+   3.574356600100211*^9, 3.574356611172656*^9}, {3.574356670236402*^9, 
+   3.5743567534697866`*^9}, {3.574359935832307*^9, 3.574359956822146*^9}, {
+   3.574360029061314*^9, 3.5743600568603897`*^9}, {3.57436010354464*^9, 
+   3.574360125126055*^9}, {3.574360164024322*^9, 3.574360311164157*^9}, {
+   3.574360350577939*^9, 3.574360473928094*^9}, {3.574360515455035*^9, 
+   3.5743606204930363`*^9}, {3.574360709256619*^9, 3.574360711118957*^9}, {
+   3.574360872598041*^9, 3.5743608752284203`*^9}, {3.574360935921626*^9, 
+   3.5743609884763117`*^9}, {3.574366520171855*^9, 3.5743665425114613`*^9}, {
+   3.574366607913135*^9, 3.574366633944871*^9}, {3.574367188025029*^9, 
+   3.5743671884648046`*^9}, {3.5743719834832363`*^9, 3.574372019517782*^9}, {
+   3.5743720709048862`*^9, 3.574372244828891*^9}, {3.574372325100169*^9, 
+   3.5743723363599787`*^9}, {3.574373803150847*^9, 3.57437384597723*^9}, {
+   3.574374378310938*^9, 3.5743744369666643`*^9}, {3.574374850902636*^9, 
+   3.574374894372655*^9}, {3.57437563899117*^9, 3.574375696216671*^9}, {
+   3.574375796140703*^9, 3.57437593844561*^9}, {3.574376010060995*^9, 
+   3.5743760504007597`*^9}, {3.574376139010703*^9, 3.5743762108473883`*^9}, {
+   3.574376667302133*^9, 3.574376710569932*^9}, {3.57437681533375*^9, 
+   3.574376876113125*^9}, {3.574377089374547*^9, 3.5743770964548407`*^9}, {
+   3.574377394540382*^9, 3.574377432190432*^9}, {3.574382542074773*^9, 
+   3.574382544311636*^9}, 3.574385055512618*^9, {3.574385235806987*^9, 
+   3.574385291198861*^9}, {3.574385336381966*^9, 3.574385339132675*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"DecodeMarks", "[", "marks_", "]"}], ":=", 
+  RowBox[{
+   RowBox[{"Composition", "[", 
+    RowBox[{"DecodeSymbol", ",", "StringJoin"}], "]"}], "/@", 
+   "marks"}]}]], "Input",
+ CellChangeTimes->{{3.5743779614380827`*^9, 3.574378016970538*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"DecodeMessage", "=", 
+   RowBox[{"Composition", "[", 
+    RowBox[{"DecodeMarks", ",", "ClassifyMessage"}], "]"}]}], ";"}]], "Input",\
+
+ CellChangeTimes->{{3.574378020602941*^9, 3.5743780345135183`*^9}, {
+  3.5743781182859373`*^9, 3.5743781252157593`*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"AnnotateMarksForMessage", "[", "message_", "]"}], ":=", 
+  RowBox[{"With", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"marks", "=", 
+      RowBox[{"ClassifyMessage", "[", "message", "]"}]}], "}"}], ",", 
+    "\[IndentingNewLine]", 
+    RowBox[{"Thread", "[", 
+     RowBox[{"{", 
+      RowBox[{
+       RowBox[{
+        RowBox[{
+         RowBox[{"(", 
+          RowBox[{"N", "[", 
+           RowBox[{
+            RowBox[{"(", 
+             RowBox[{
+              RowBox[{"#", "[", 
+               RowBox[{"[", "1", "]"}], "]"}], "+", 
+              RowBox[{"#", "[", 
+               RowBox[{"[", "2", "]"}], "]"}]}], ")"}], "/", "2"}], "]"}], 
+          ")"}], "&"}], "/@", "message"}], ",", 
+       RowBox[{"Flatten", "[", "marks", "]"}]}], "}"}], "]"}]}], 
+   "]"}]}]], "Input",
+ CellChangeTimes->{{3.574378176883541*^9, 3.574378197236127*^9}, {
+  3.574378244742982*^9, 3.574378281304681*^9}, {3.574378479102722*^9, 
+  3.574378539192292*^9}, {3.574378591642827*^9, 3.5743785942599087`*^9}, {
+  3.574378648669771*^9, 3.574378701649776*^9}, {3.574381685894063*^9, 
+  3.574381736451318*^9}, {3.574381875707995*^9, 3.57438190232944*^9}}],
+
+Cell[BoxData[
+ RowBox[{
+  RowBox[{"AnnotateLettersForMessage", "[", "message_", "]"}], ":=", 
+  RowBox[{"With", "[", 
+   RowBox[{
+    RowBox[{"{", 
+     RowBox[{"marks", "=", 
+      RowBox[{"ClassifyMessage", "[", "message", "]"}]}], "}"}], ",", 
+    "\[IndentingNewLine]", 
+    RowBox[{"With", "[", 
+     RowBox[{
+      RowBox[{"{", 
+       RowBox[{"letterIndices", "=", 
+        RowBox[{"Accumulate", "[", 
+         RowBox[{"Map", "[", 
+          RowBox[{"Length", ",", "marks"}], "]"}], "]"}]}], "}"}], ",", 
+      "\[IndentingNewLine]", 
+      RowBox[{"Thread", "[", 
+       RowBox[{"{", 
+        RowBox[{
+         RowBox[{
+          RowBox[{
+           RowBox[{"#", "[", 
+            RowBox[{"[", "2", "]"}], "]"}], "&"}], "/@", 
+          RowBox[{"Part", "[", 
+           RowBox[{"message", ",", "letterIndices"}], "]"}]}], ",", 
+         RowBox[{"DecodeMarks", "[", "marks", "]"}]}], "}"}], "]"}]}], 
+     "]"}]}], "]"}]}]], "Input",
+ CellChangeTimes->{{3.574378723922172*^9, 3.57437873118085*^9}, {
+  3.574383456999362*^9, 3.574383490873951*^9}, {3.574383600375258*^9, 
+  3.574383649715097*^9}, {3.57438369336043*^9, 3.5743837524610453`*^9}, {
+  3.574383851384695*^9, 3.5743839121757927`*^9}, {3.574554122207101*^9, 
+  3.574554132607813*^9}, {3.574554169413473*^9, 3.574554254446109*^9}}]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Example data", "Section",
+ CellChangeTimes->{{3.574359530370603*^9, 3.5743595354283047`*^9}}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[
+ RowBox[{"With", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{"message", "=", 
+     RowBox[{"ImportMessages", "[", 
+      RowBox[{"{", 
+       RowBox[{"\"\<sos\>\"", ",", "\"\<hello\>\""}], "}"}], "]"}]}], "}"}], 
+   ",", "\[IndentingNewLine]", 
+   RowBox[{"PlotMessage", "[", 
+    RowBox[{"message", ",", 
+     RowBox[{"marks", "\[Rule]", 
+      RowBox[{"AnnotateMarksForMessage", "[", "message", "]"}]}], ",", 
+     RowBox[{"letters", "\[Rule]", 
+      RowBox[{"AnnotateLettersForMessage", "[", "message", "]"}]}]}], "]"}]}],
+   "]"}]], "Input",
+ CellChangeTimes->{{3.5743423929684153`*^9, 3.5743424002874947`*^9}, {
+   3.574342755518959*^9, 3.57434281886514*^9}, {3.574343064252199*^9, 
+   3.574343066486155*^9}, {3.5743490195198402`*^9, 3.574349019691791*^9}, 
+   3.574349104633066*^9, {3.574349163789056*^9, 3.574349164039884*^9}, {
+   3.574349262714944*^9, 3.574349262904643*^9}, {3.574353094058783*^9, 
+   3.574353099450757*^9}, {3.5743534176930857`*^9, 3.574353420084331*^9}, {
+   3.5743540262286873`*^9, 3.574354029025316*^9}, {3.57435407936519*^9, 
+   3.574354088411422*^9}, {3.574354263972784*^9, 3.574354268500618*^9}, {
+   3.57435444636147*^9, 3.574354470058161*^9}, {3.574356939034959*^9, 
+   3.574356976481154*^9}, {3.574357022201709*^9, 3.574357028776667*^9}, {
+   3.574360642740329*^9, 3.5743606444754553`*^9}, {3.57436078865797*^9, 
+   3.57436079057227*^9}, {3.574375239053217*^9, 3.574375254280817*^9}, {
+   3.574384006045072*^9, 3.574384028412343*^9}, 3.574385081384841*^9, {
+   3.574437602654232*^9, 3.574437602851996*^9}, {3.5744376428972397`*^9, 
+   3.574437766394175*^9}, {3.5744377984603167`*^9, 3.57443779892977*^9}, {
+   3.574446164653523*^9, 3.574446170771716*^9}, {3.574461476433069*^9, 
+   3.574461477126357*^9}, {3.574894740077375*^9, 3.5748947756730003`*^9}}],
+
+Cell[BoxData[
+ GraphicsBox[{LineBox[{{0, 0}, {70, 0}}], LineBox[{{130, 0}, {205, 0}}], 
+   LineBox[{{250, 0}, {330, 0}}], LineBox[{{506, 0}, {706, 0}}], 
+   LineBox[{{786, 0}, {966, 0}}], LineBox[{{1062, 0}, {1232, 0}}], 
+   LineBox[{{1342, 0}, {1402, 0}}], LineBox[{{1478, 0}, {1533, 0}}], 
+   LineBox[{{1598, 0}, {1673, 0}}], LineBox[{{2168, 0}, {2233, 0}}], 
+   LineBox[{{2299, 0}, {2369, 0}}], LineBox[{{2434, 0}, {2534, 0}}], 
+   LineBox[{{2670, 0}, {2880, 0}}], LineBox[{{2985, 0}, {3165, 0}}], 
+   LineBox[{{3281, 0}, {3456, 0}}], LineBox[{{3586, 0}, {3641, 0}}], 
+   LineBox[{{3717, 0}, {3772, 0}}], LineBox[{{3837, 0}, {3947, 0}}], 
+   LineBox[{{4437, 0}, {4507, 0}}], LineBox[{{4583, 0}, {4653, 0}}], 
+   LineBox[{{4728, 0}, {4823, 0}}], LineBox[{{4999, 0}, {5000, 0}}], 
+   LineBox[{{0, -400}, {229, -400}}], LineBox[{{344, -400}, {514, -400}}], 
+   LineBox[{{635, -400}, {815, -400}}], LineBox[{{950, -400}, {1000, -400}}], 
+   LineBox[{{1075, -400}, {1135, -400}}], 
+   LineBox[{{1211, -400}, {1301, -400}}], 
+   LineBox[{{1866, -400}, {1931, -400}}], 
+   LineBox[{{2002, -400}, {2082, -400}}], 
+   LineBox[{{2162, -400}, {2277, -400}}], 
+   LineBox[{{2418, -400}, {2658, -400}}], 
+   LineBox[{{2778, -400}, {2978, -400}}], 
+   LineBox[{{3084, -400}, {3274, -400}}], 
+   LineBox[{{3399, -400}, {3459, -400}}], 
+   LineBox[{{3534, -400}, {3594, -400}}], 
+   LineBox[{{3675, -400}, {3770, -400}}], LineBox[{{770, -800}, {885, -800}}],
+    LineBox[{{970, -800}, {1060, -800}}], 
+   LineBox[{{1161, -800}, {1266, -800}}], 
+   LineBox[{{1376, -800}, {1516, -800}}], 
+   LineBox[{{2076, -800}, {2206, -800}}], 
+   LineBox[{{2652, -800}, {2727, -800}}], 
+   LineBox[{{2852, -800}, {3137, -800}}], 
+   LineBox[{{3283, -800}, {3383, -800}}], 
+   LineBox[{{3473, -800}, {3583, -800}}], 
+   LineBox[{{3914, -800}, {3984, -800}}], 
+   LineBox[{{4104, -800}, {4379, -800}}], 
+   LineBox[{{4575, -800}, {4665, -800}}], 
+   LineBox[{{4765, -800}, {4860, -800}}], 
+   LineBox[{{276, -1200}, {576, -1200}}], 
+   LineBox[{{781, -1200}, {1076, -1200}}], 
+   LineBox[{{1252, -1200}, {1572, -1200}}], 
+   LineBox[{{2617, -1200}, {2707, -1200}}], 
+   LineBox[{{2808, -1200}, {2908, -1200}}], 
+   LineBox[{{2993, -1200}, {3078, -1200}}], 
+   LineBox[{{3204, -1200}, {3329, -1200}}], 
+   LineBox[{{3979, -1200}, {4124, -1200}}], 
+   LineBox[{{4475, -1200}, {4550, -1200}}], 
+   LineBox[{{4655, -1200}, {4980, -1200}}], 
+   LineBox[{{71, -1600}, {151, -1600}}], 
+   LineBox[{{247, -1600}, {367, -1600}}], 
+   LineBox[{{697, -1600}, {757, -1600}}], 
+   LineBox[{{858, -1600}, {1183, -1600}}], 
+   LineBox[{{1298, -1600}, {1388, -1600}}], 
+   LineBox[{{1504, -1600}, {1599, -1600}}], 
+   LineBox[{{1994, -1600}, {2294, -1600}}], 
+   LineBox[{{2475, -1600}, {2805, -1600}}], 
+   LineBox[{{2960, -1600}, {3300, -1600}}], 
+   LineBox[{{4536, -1600}, {4651, -1600}}], 
+   LineBox[{{4736, -1600}, {4821, -1600}}], 
+   LineBox[{{4947, -1600}, {5000, -1600}}], 
+   LineBox[{{0, -2000}, {62, -2000}}], LineBox[{{137, -2000}, {287, -2000}}], 
+   LineBox[{{903, -2000}, {1048, -2000}}], 
+   LineBox[{{1433, -2000}, {1508, -2000}}], 
+   LineBox[{{1624, -2000}, {1969, -2000}}], 
+   LineBox[{{2094, -2000}, {2224, -2000}}], 
+   LineBox[{{2295, -2000}, {2430, -2000}}], 
+   LineBox[{{2741, -2000}, {2816, -2000}}], 
+   LineBox[{{2931, -2000}, {3276, -2000}}], 
+   LineBox[{{3387, -2000}, {3492, -2000}}], 
+   LineBox[{{3582, -2000}, {3717, -2000}}], 
+   LineBox[{{4033, -2000}, {4383, -2000}}], 
+   LineBox[{{4523, -2000}, {4898, -2000}}], 
+   LineBox[{{49, -2400}, {439, -2400}}], 
+   LineBox[{{1559, -2400}, {1664, -2400}}], 
+   LineBox[{{1745, -2400}, {1850, -2400}}], 
+   LineBox[{{1945, -2400}, {2030, -2400}}], 
+   LineBox[{{2136, -2400}, {2291, -2400}}], 
+   LineBox[{{2951, -2400}, {3096, -2400}}], 
+   LineBox[{{3512, -2400}, {3607, -2400}}], 
+   LineBox[{{3707, -2400}, {4072, -2400}}], 
+   LineBox[{{4173, -2400}, {4268, -2400}}], 
+   LineBox[{{4353, -2400}, {4488, -2400}}], 
+   LineBox[{{4779, -2400}, {4884, -2400}}], 
+   LineBox[{{4990, -2400}, {5000, -2400}}], 
+   LineBox[{{0, -2800}, {305, -2800}}], LineBox[{{435, -2800}, {530, -2800}}],
+    LineBox[{{641, -2800}, {766, -2800}}], 
+   LineBox[{{1096, -2800}, {1421, -2800}}], 
+   LineBox[{{1572, -2800}, {1877, -2800}}], 
+   LineBox[{{2057, -2800}, {2412, -2800}}], 
+   LineBox[{{3993, -2800}, {4113, -2800}}], 
+   LineBox[{{4193, -2800}, {4273, -2800}}], 
+   LineBox[{{4399, -2800}, {4504, -2800}}], 
+   LineBox[{{4599, -2800}, {4739, -2800}}], 
+   LineBox[{{430, -3200}, {590, -3200}}], 
+   LineBox[{{940, -3200}, {1015, -3200}}], 
+   LineBox[{{1126, -3200}, {1451, -3200}}], 
+   LineBox[{{1571, -3200}, {1676, -3200}}], 
+   LineBox[{{1762, -3200}, {1917, -3200}}], 
+   LineBox[{{2157, -3200}, {2257, -3200}}], 
+   LineBox[{{2358, -3200}, {2688, -3200}}], 
+   LineBox[{{2789, -3200}, {2884, -3200}}], 
+   LineBox[{{2984, -3200}, {3134, -3200}}], 
+   LineBox[{{3485, -3200}, {3780, -3200}}], 
+   LineBox[{{3965, -3200}, {4265, -3200}}], 
+   LineBox[{{4441, -3200}, {4761, -3200}}], 
+   {RGBColor[0, 0, 1], InsetBox["\<\".\"\>", {35., -50}], 
+    InsetBox["\<\".\"\>", {167.5, -50}], InsetBox["\<\".\"\>", {290., -50}], 
+    InsetBox["\<\"-\"\>", {606., -50}], InsetBox["\<\".\"\>", {876., -50}], 
+    InsetBox["\<\".\"\>", {1147., -50}], InsetBox["\<\".\"\>", {1372., -50}], 
+    InsetBox["\<\".\"\>", {1505.5, -50}], 
+    InsetBox["\<\".\"\>", {1635.5, -50}], 
+    InsetBox["\<\".\"\>", {2200.5, -50}], InsetBox["\<\".\"\>", {2334., -50}],
+     InsetBox["\<\".\"\>", {2484., -50}], InsetBox["\<\"-\"\>", {2775., -50}],
+     InsetBox["\<\"-\"\>", {3075., -50}], 
+    InsetBox["\<\"-\"\>", {3368.5, -50}], 
+    InsetBox["\<\".\"\>", {3613.5, -50}], 
+    InsetBox["\<\".\"\>", {3744.5, -50}], InsetBox["\<\".\"\>", {3892., -50}],
+     InsetBox["\<\".\"\>", {4472., -50}], InsetBox["\<\".\"\>", {4618., -50}],
+     InsetBox["\<\".\"\>", {4775.5, -50}], 
+    InsetBox["\<\"-\"\>", {114., -450}], InsetBox["\<\"-\"\>", {429., -450}], 
+    InsetBox["\<\"-\"\>", {725., -450}], InsetBox["\<\".\"\>", {975., -450}], 
+    InsetBox["\<\".\"\>", {1105., -450}], 
+    InsetBox["\<\".\"\>", {1256., -450}], 
+    InsetBox["\<\".\"\>", {1898.5, -450}], 
+    InsetBox["\<\".\"\>", {2042., -450}], 
+    InsetBox["\<\".\"\>", {2219.5, -450}], 
+    InsetBox["\<\"-\"\>", {2538., -450}], 
+    InsetBox["\<\"-\"\>", {2878., -450}], 
+    InsetBox["\<\"-\"\>", {3179., -450}], 
+    InsetBox["\<\".\"\>", {3429., -450}], 
+    InsetBox["\<\".\"\>", {3564., -450}], 
+    InsetBox["\<\".\"\>", {3722.5, -450}], 
+    InsetBox["\<\".\"\>", {827.5, -850}], 
+    InsetBox["\<\".\"\>", {1015., -850}], 
+    InsetBox["\<\".\"\>", {1213.5, -850}], 
+    InsetBox["\<\".\"\>", {1446., -850}], 
+    InsetBox["\<\".\"\>", {2141., -850}], 
+    InsetBox["\<\".\"\>", {2689.5, -850}], 
+    InsetBox["\<\"-\"\>", {2994.5, -850}], 
+    InsetBox["\<\".\"\>", {3333., -850}], 
+    InsetBox["\<\".\"\>", {3528., -850}], 
+    InsetBox["\<\".\"\>", {3949., -850}], 
+    InsetBox["\<\"-\"\>", {4241.5, -850}], 
+    InsetBox["\<\".\"\>", {4620., -850}], 
+    InsetBox["\<\".\"\>", {4812.5, -850}], 
+    InsetBox["\<\"-\"\>", {426., -1250}], 
+    InsetBox["\<\"-\"\>", {928.5, -1250}], 
+    InsetBox["\<\"-\"\>", {1412., -1250}], 
+    InsetBox["\<\".\"\>", {2662., -1250}], 
+    InsetBox["\<\".\"\>", {2858., -1250}], 
+    InsetBox["\<\".\"\>", {3035.5, -1250}], 
+    InsetBox["\<\".\"\>", {3266.5, -1250}], 
+    InsetBox["\<\".\"\>", {4051.5, -1250}], 
+    InsetBox["\<\".\"\>", {4512.5, -1250}], 
+    InsetBox["\<\"-\"\>", {4817.5, -1250}], 
+    InsetBox["\<\".\"\>", {111., -1650}], 
+    InsetBox["\<\".\"\>", {307., -1650}], 
+    InsetBox["\<\".\"\>", {727., -1650}], 
+    InsetBox["\<\"-\"\>", {1020.5, -1650}], 
+    InsetBox["\<\".\"\>", {1343., -1650}], 
+    InsetBox["\<\".\"\>", {1551.5, -1650}], 
+    InsetBox["\<\"-\"\>", {2144., -1650}], 
+    InsetBox["\<\"-\"\>", {2640., -1650}], 
+    InsetBox["\<\"-\"\>", {3130., -1650}], 
+    InsetBox["\<\".\"\>", {4593.5, -1650}], 
+    InsetBox["\<\".\"\>", {4778.5, -1650}], 
+    InsetBox["\<\".\"\>", {4.5, -2050}], InsetBox["\<\".\"\>", {212., -2050}],
+     InsetBox["\<\".\"\>", {975.5, -2050}], 
+    InsetBox["\<\".\"\>", {1470.5, -2050}], 
+    InsetBox["\<\"-\"\>", {1796.5, -2050}], 
+    InsetBox["\<\".\"\>", {2159., -2050}], 
+    InsetBox["\<\".\"\>", {2362.5, -2050}], 
+    InsetBox["\<\".\"\>", {2778.5, -2050}], 
+    InsetBox["\<\"-\"\>", {3103.5, -2050}], 
+    InsetBox["\<\".\"\>", {3439.5, -2050}], 
+    InsetBox["\<\".\"\>", {3649.5, -2050}], 
+    InsetBox["\<\"-\"\>", {4208., -2050}], 
+    InsetBox["\<\"-\"\>", {4710.5, -2050}], 
+    InsetBox["\<\"-\"\>", {244., -2450}], 
+    InsetBox["\<\".\"\>", {1611.5, -2450}], 
+    InsetBox["\<\".\"\>", {1797.5, -2450}], 
+    InsetBox["\<\".\"\>", {1987.5, -2450}], 
+    InsetBox["\<\".\"\>", {2213.5, -2450}], 
+    InsetBox["\<\".\"\>", {3023.5, -2450}], 
+    InsetBox["\<\".\"\>", {3559.5, -2450}], 
+    InsetBox["\<\"-\"\>", {3889.5, -2450}], 
+    InsetBox["\<\".\"\>", {4220.5, -2450}], 
+    InsetBox["\<\".\"\>", {4420.5, -2450}], 
+    InsetBox["\<\".\"\>", {4831.5, -2450}], 
+    InsetBox["\<\"-\"\>", {147.5, -2850}], 
+    InsetBox["\<\".\"\>", {482.5, -2850}], 
+    InsetBox["\<\".\"\>", {703.5, -2850}], 
+    InsetBox["\<\"-\"\>", {1258.5, -2850}], 
+    InsetBox["\<\"-\"\>", {1724.5, -2850}], 
+    InsetBox["\<\"-\"\>", {2234.5, -2850}], 
+    InsetBox["\<\".\"\>", {4053., -2850}], 
+    InsetBox["\<\".\"\>", {4233., -2850}], 
+    InsetBox["\<\".\"\>", {4451.5, -2850}], 
+    InsetBox["\<\".\"\>", {4669., -2850}], 
+    InsetBox["\<\".\"\>", {510., -3250}], 
+    InsetBox["\<\".\"\>", {977.5, -3250}], 
+    InsetBox["\<\"-\"\>", {1288.5, -3250}], 
+    InsetBox["\<\".\"\>", {1623.5, -3250}], 
+    InsetBox["\<\".\"\>", {1839.5, -3250}], 
+    InsetBox["\<\".\"\>", {2207., -3250}], 
+    InsetBox["\<\"-\"\>", {2523., -3250}], 
+    InsetBox["\<\".\"\>", {2836.5, -3250}], 
+    InsetBox["\<\".\"\>", {3059., -3250}], 
+    InsetBox["\<\"-\"\>", {3632.5, -3250}], 
+    InsetBox["\<\"-\"\>", {4115., -3250}], 
+    InsetBox["\<\"-\"\>", {4601., -3250}]}, 
+   {RGBColor[1, 0, 0], InsetBox["\<\"?\"\>", {1673, -150}], 
+    InsetBox["\<\"S\"\>", {2534, -150}], InsetBox["\<\"O\"\>", {3456, -150}], 
+    InsetBox["\<\"S\"\>", {3947, -150}], InsetBox["\<\"S\"\>", {4823, -150}], 
+    InsetBox["\<\"O\"\>", {815, -550}], InsetBox["\<\"S\"\>", {1301, -550}], 
+    InsetBox["\<\"S\"\>", {2277, -550}], InsetBox["\<\"?\"\>", {3770, -550}], 
+    InsetBox["\<\"H\"\>", {1516, -950}], InsetBox["\<\"E\"\>", {2206, -950}], 
+    InsetBox["\<\"L\"\>", {3583, -950}], InsetBox["\<\"A\"\>", {4379, -950}], 
+    InsetBox["\<\"I\"\>", {4860, -950}], InsetBox["\<\"T\"\>", {576, -1350}], 
+    InsetBox["\<\"M\"\>", {1572, -1350}], 
+    InsetBox["\<\"H\"\>", {3329, -1350}], 
+    InsetBox["\<\"E\"\>", {4124, -1350}], InsetBox["\<\"L\"\>", {367, -1750}],
+     InsetBox["\<\"L\"\>", {1599, -1750}], 
+    InsetBox["\<\"O\"\>", {3300, -1750}], InsetBox["\<\"H\"\>", {287, -2150}],
+     InsetBox["\<\"E\"\>", {1048, -2150}], 
+    InsetBox["\<\"L\"\>", {2430, -2150}], 
+    InsetBox["\<\"L\"\>", {3717, -2150}], InsetBox["\<\"O\"\>", {439, -2550}],
+     InsetBox["\<\"H\"\>", {2291, -2550}], 
+    InsetBox["\<\"E\"\>", {3096, -2550}], 
+    InsetBox["\<\"L\"\>", {4488, -2550}], InsetBox["\<\"L\"\>", {766, -2950}],
+     InsetBox["\<\"O\"\>", {2412, -2950}], 
+    InsetBox["\<\"H\"\>", {4739, -2950}], InsetBox["\<\"E\"\>", {590, -3350}],
+     InsetBox["\<\"L\"\>", {1917, -3350}], 
+    InsetBox["\<\"L\"\>", {3134, -3350}], 
+    InsetBox["\<\"O\"\>", {4761, -3350}]}, 
+   {GrayLevel[0.85], LineBox[{{0, 0}, {0, -3600}}], 
+    LineBox[{{5000, 0}, {5000, -3600}}]}},
+  BaseStyle->{FontSize -> 16},
+  ImageSize->{624.4765625, Automatic}]], "Output",
+ CellChangeTimes->{3.574894794757571*^9}]
+}, Open  ]]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Ideas", "Section",
+ CellChangeTimes->{{3.5743857042751627`*^9, 3.574385706941249*^9}, 
+   3.5743858768295097`*^9}],
+
+Cell[CellGroupData[{
+
+Cell["Possible improvements", "Subsection",
+ CellChangeTimes->{{3.5743859220021152`*^9, 3.574385924196805*^9}}],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Lower the threshold for end-of-letter if the marks currently in our buffer \
+form a valid Morse code character\
+\>", "Item",
+ CellChangeTimes->{{3.574385743775827*^9, 3.5743857783618793`*^9}}],
+
+Cell["\<\
+Keep track of borderline mark classifications, and try flipping them if we \
+cannot decode the character\
+\>", "Item",
+ CellChangeTimes->{{3.574385743775827*^9, 3.574385854448103*^9}, {
+  3.574386089572926*^9, 3.574386089575697*^9}}],
+
+Cell["\<\
+Variations of k-means iteration count\
+\>", "Item",
+ CellChangeTimes->{{3.574385743775827*^9, 3.574385854448103*^9}, {
+  3.574386089572926*^9, 3.574386105014592*^9}}],
+
+Cell["\<\
+Variations of interval buffer length\
+\>", "Item",
+ CellChangeTimes->{{3.574385743775827*^9, 3.574385854448103*^9}, {
+  3.574386089572926*^9, 3.574386113077992*^9}}],
+
+Cell["\<\
+Whether or not to preserve centroids when receiving a new mark\
+\>", "Item",
+ CellChangeTimes->{{3.574385743775827*^9, 3.574385854448103*^9}, {
+  3.574386089572926*^9, 3.574386157040721*^9}, {3.574386590638871*^9, 
+  3.574386590640986*^9}, {3.5743866296169443`*^9, 3.574386629618334*^9}}],
+
+Cell["\<\
+If preserving centroids, prevent convergence\
+\>", "Subitem",
+ CellChangeTimes->{{3.574385743775827*^9, 3.574385854448103*^9}, {
+  3.574386089572926*^9, 3.574386157040721*^9}, {3.574386590638871*^9, 
+  3.574386590640986*^9}, {3.5743866296169443`*^9, 3.5743866361239758`*^9}}],
+
+Cell["\<\
+Find a way to incorporate the convention that the duration of a dah is three \
+times that of a dit\
+\>", "Item",
+ CellChangeTimes->{{3.574385743775827*^9, 3.574385854448103*^9}, {
+  3.574386089572926*^9, 3.574386157040721*^9}, {3.574386590638871*^9, 
+  3.57438660844881*^9}}]
+}, Open  ]]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Pathological cases to handle", "Subsection",
+ CellChangeTimes->{{3.57438592669983*^9, 3.574385963719005*^9}}],
+
+Cell[CellGroupData[{
+
+Cell["\<\
+Fill the interval buffer with all dits or all dahs\
+\>", "Item",
+ CellChangeTimes->{{3.574385940350095*^9, 3.574385946213416*^9}, {
+  3.5743859825174026`*^9, 3.574385982520047*^9}}],
+
+Cell["\<\
+Discontinuous jump in coding speed resulting in collapse onto a single \
+centriod\
+\>", "Item",
+ CellChangeTimes->{{3.574385940350095*^9, 3.574385946213416*^9}, {
+  3.5743859825174026`*^9, 3.5743860253240643`*^9}}]
+}, Open  ]]
+}, Open  ]]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{772, 756},
+WindowMargins->{{0, Automatic}, {Automatic, 0}},
+PrintingCopies->1,
+PrintingPageRange->{1, Automatic},
+FrontEndVersion->"9.0 for Mac OS X x86 (32-bit, 64-bit Kernel) (January 25, \
+2013)",
+StyleDefinitions->"Default.nb"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[579, 22, 440, 7, 148, "Title"],
+Cell[1022, 31, 154, 2, 51, "Subtitle"],
+Cell[1179, 35, 2500, 36, 429, "Text"],
+Cell[CellGroupData[{
+Cell[3704, 75, 206, 3, 80, "Section"],
+Cell[3913, 80, 257, 5, 49, "Text"],
+Cell[CellGroupData[{
+Cell[4195, 89, 101, 1, 44, "Subsection"],
+Cell[4299, 92, 530, 9, 68, "Text"],
+Cell[4832, 103, 421, 10, 46, "Input"],
+Cell[5256, 115, 848, 18, 63, "Input"],
+Cell[6107, 135, 338, 7, 28, "Input"],
+Cell[6448, 144, 292, 6, 30, "Text"],
+Cell[6743, 152, 2016, 46, 80, "Input"],
+Cell[8762, 200, 420, 10, 28, "Input"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[9219, 215, 105, 1, 44, "Subsection"],
+Cell[9327, 218, 205, 4, 30, "Text"],
+Cell[9535, 224, 5881, 161, 335, "Input"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[15453, 390, 161, 2, 44, "Subsection"],
+Cell[15617, 394, 198, 4, 30, "Text"],
+Cell[15818, 400, 427, 10, 46, "Input"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[16282, 415, 105, 1, 44, "Subsection"],
+Cell[16390, 418, 507, 17, 46, "Input"]
+}, Open  ]]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[16946, 441, 169, 2, 80, "Section"],
+Cell[17118, 445, 155, 2, 30, "Text"],
+Cell[17276, 449, 3264, 80, 148, "Input"],
+Cell[20543, 531, 316, 6, 49, "Text"],
+Cell[20862, 539, 1073, 26, 46, "Input"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[21972, 570, 256, 3, 80, "Section"],
+Cell[22231, 575, 268, 6, 30, "Text"],
+Cell[22502, 583, 753, 21, 46, "Input"],
+Cell[23258, 606, 375, 7, 49, "Text"],
+Cell[23636, 615, 288, 8, 28, "Input"],
+Cell[23927, 625, 157, 3, 30, "Text"],
+Cell[24087, 630, 1480, 37, 97, "Input"],
+Cell[25570, 669, 309, 6, 49, "Text"],
+Cell[25882, 677, 6263, 135, 420, "Input"],
+Cell[32148, 814, 277, 7, 28, "Input"],
+Cell[32428, 823, 290, 7, 28, "Input"],
+Cell[32721, 832, 1174, 30, 46, "Input"],
+Cell[33898, 864, 1296, 32, 63, "Input"]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[35231, 901, 99, 1, 80, "Section"],
+Cell[CellGroupData[{
+Cell[35355, 906, 1806, 32, 63, "Input"],
+Cell[37164, 940, 11769, 238, 471, "Output"]
+}, Open  ]]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[48982, 1184, 120, 2, 80, "Section"],
+Cell[CellGroupData[{
+Cell[49127, 1190, 111, 1, 44, "Subsection"],
+Cell[CellGroupData[{
+Cell[49263, 1195, 202, 4, 45, "Item"],
+Cell[49468, 1201, 243, 5, 28, "Item"],
+Cell[49714, 1208, 176, 4, 28, "Item"],
+Cell[49893, 1214, 175, 4, 28, "Item"],
+Cell[50071, 1220, 298, 5, 28, "Item"],
+Cell[50372, 1227, 285, 5, 26, "Subitem"],
+Cell[50660, 1234, 285, 6, 28, "Item"]
+}, Open  ]]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[50994, 1246, 115, 1, 44, "Subsection"],
+Cell[CellGroupData[{
+Cell[51134, 1251, 191, 4, 28, "Item"],
+Cell[51328, 1257, 224, 5, 28, "Item"]
+}, Open  ]]
+}, Open  ]]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)
