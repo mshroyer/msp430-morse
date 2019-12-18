@@ -163,13 +163,15 @@ void morse_out(const char *enc) {
 void morse_in(int key_state, unsigned long now) {
   unsigned long len;
 
-  if (key_state == last_key_state)
+  if (key_state == last_key_state) {
     return;
+  }
 
-  if (now - last_key_millis < CODE_DEBOUNCE)
+  if (now - last_key_millis < CODE_DEBOUNCE) {
     return;
+  }
 
-  if (! key_state && recv_i < BUF_SZ) {
+  if (!key_state && recv_i < BUF_SZ) {
     len = now - last_key_millis;
     char ch = classify_interval(len);
     buf_recv[recv_i++] = ch;
@@ -198,7 +200,7 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
-  boolean key_state = ! digitalRead(KEY_PIN);
+  boolean key_state = !digitalRead(KEY_PIN);
   char ch;
 
   morse_in(key_state, now);
