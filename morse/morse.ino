@@ -8,7 +8,7 @@
 #define ENC_SZ 5
 #define KEY_PIN PUSH2
 #define LED_PIN GREEN_LED
-#define CODE_DEBOUNCE 25 /* ms */
+#define CODE_DEBOUNCE_MILLIS 25
 #define BUF_SZ 8
 #define BUF_INT_SZ 16
 
@@ -167,7 +167,7 @@ void morse_in(int key_state, unsigned long now) {
     return;
   }
 
-  if (now - last_key_millis < CODE_DEBOUNCE) {
+  if (now - last_key_millis < CODE_DEBOUNCE_MILLIS) {
     return;
   }
 
