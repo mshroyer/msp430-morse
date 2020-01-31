@@ -21,7 +21,7 @@
 #define LED_PIN 13
 #define CODE_DEBOUNCE_MILLIS 25
 #define BUF_SZ 8
-#define BUF_INT_SZ 32
+#define BUF_INT_SZ 24
 
 #define MORSE_CHAR(ch, enc) ch enc
 #define DIT centroid[0]
