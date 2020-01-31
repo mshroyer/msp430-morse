@@ -74,7 +74,7 @@ int get_centroid(unsigned long len) {
 }
 
 char classify_interval(unsigned long len) {
-  if ((centroid[1] < centroid[0]) != (get_centroid(len) == 0 )) {
+  if ((centroid[1] < centroid[0]) != (get_centroid(len) == 0)) {
     return '.';
   } else {
     return '-';
@@ -107,7 +107,7 @@ void update_centroids(unsigned long len) {
 const char *morse_encode_char(char ch) {
   int i;
 
-  /* Convert lower case to upper */
+  // Convert lower case to upper.
   if (ch >= 0x61 && ch <= 0x7a) {
     ch -= 0x20;
   }
@@ -163,10 +163,12 @@ void morse_out(const char *enc) {
 void morse_in(int key_state, unsigned long now) {
   unsigned long len;
 
+  // Input is unchanged, nothing to do here.
   if (key_state == last_key_state) {
     return;
   }
 
+  // Ignore key bounces.
   if (now - last_key_millis < CODE_DEBOUNCE_MILLIS) {
     return;
   }
@@ -204,7 +206,8 @@ void loop() {
   char ch;
 
   morse_in(key_state, now);
-  if (!last_key_state && recv_i != 0 && classify_interval(now - last_key_millis) == '-') {
+  if (!last_key_state && recv_i != 0
+      && classify_interval(now - last_key_millis) == '-') {
     buf_recv[recv_i] = '\0';
     ch = morse_decode_char(buf_recv);
     if (ch) {
