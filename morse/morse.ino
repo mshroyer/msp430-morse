@@ -108,8 +108,8 @@ void update_centroids(unsigned long len) {
 
   buf_int[buf_int_i] = len;
 
-  centroid[0] = 100;
-  centroid[1] = 300;
+  centroid[0] = 50;
+  centroid[1] = 350;
   for (i = 0; i < 100; i++) {
     centroid_sums[0] = 0;
     centroid_sums[1] = 0;
@@ -122,7 +122,9 @@ void update_centroids(unsigned long len) {
       centroid_matches[k]++;
     }
     for (k = 0; k < 2; k++) {
-      centroid[k] = centroid_sums[k] / centroid_matches[k];
+      if (centroid_matches[k] != 0) {
+        centroid[k] = centroid_sums[k] / centroid_matches[k];
+      }
     }
   }
   normalize_centroids();
