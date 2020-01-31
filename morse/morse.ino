@@ -1,11 +1,21 @@
 /*
-   morse.ino - Morse code keyer for the TI MSP430 LaunchPad
-
-   Mark Shroyer
-   5 August 2013
-*/
-
-#include <Keyboard.h>
+ * morse.ino - Morse encoder and decoder
+ *
+ * Encodes and decodes morse code sequences on an ATmega32U4-based MCU board
+ * like the Adafruit ItsyBitsy. Characters can be input over a serial line,
+ * and the corresponding Morse code will be blinked out on an LED; Morse code
+ * sequences entered on a pulled-up input pin will be converted to characters.
+ * Those characters can be output over the serial port or over an emulated
+ * USB HID keyboard.
+ *
+ * This is ported from code originally written to run on a TI MSP430
+ * LaunchPad. It will probably run on most Arduino-compatible boards with
+ * little modification, except that keyboard emulation relies on specific
+ * functionality of the ATmega32U4.
+ *
+ * Mark Shroyer <mark@shroyer.name>
+ * 30 January 2020
+ */
 
 // Enable input over serial to output to the LED.
 //#define ENABLE_INPUT 1
@@ -26,6 +36,10 @@
 #define MORSE_CHAR(ch, enc) ch enc
 #define DIT centroid[0]
 #define DAH centroid[1]
+
+#ifdef ENABLE_KEYBOARD_OUTPUT
+#include <Keyboard.h>
+#endif
 
 const char morse_table[][ENC_SZ + 2] = {
   MORSE_CHAR("A", ".-"),
