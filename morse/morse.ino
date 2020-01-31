@@ -170,7 +170,7 @@ char morse_decode_char(const char *enc) {
     }
   }
 
-  return '\0';
+  return '?';
 }
 
 #ifdef ENABLE_INPUT
