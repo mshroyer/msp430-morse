@@ -128,7 +128,9 @@ void update_centroids(unsigned long len) {
   normalize_centroids();
 
 #ifdef ENABLE_DEBUG_CENTROIDS
-  Serial.write("buf_int = [");
+  Serial.write("len = ");
+  Serial.print(len);
+  Serial.write("; buf_int = [");
   for (j = 0; j < BUF_INT_SZ; j++) {
     Serial.print(buf_int[j]);
     if (j < BUF_INT_SZ - 1) {
