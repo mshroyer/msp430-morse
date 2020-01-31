@@ -5,6 +5,17 @@
    5 August 2013
 */
 
+#include <Keyboard.h>
+
+// Enable input over serial to output to the LED.
+#define ENABLE_INPUT 1
+
+// Output decoded characters to USB keyboard instead of serial.
+//#define ENABLE_KEYBOARD_OUTPUT 1
+
+// Output centroid debugging info over serial.
+#define ENABLE_DEBUG_CENTROIDS 1
+
 #define ENC_SZ 5
 #define KEY_PIN 12
 #define LED_PIN 13
@@ -83,16 +94,6 @@ int get_centroid(unsigned long len) {
 }
 
 char classify_interval(unsigned long len) {
-  /*
-  Serial.write("centroids = (");
-  Serial.print(centroid[0]);
-  Serial.write(", ");
-  Serial.print(centroid[1]);
-  Serial.write("); len = ");
-  Serial.print(len);
-  Serial.write('\n');
-  */
- 
   if ((centroid[1] < centroid[0]) != (get_centroid(len) == 0)) {
     return '.';
   } else {
@@ -124,11 +125,9 @@ void update_centroids(unsigned long len) {
       centroid[k] = centroid_sums[k] / centroid_matches[k];
     }
   }
-  if (centroid[0] > centroid[1]) {
-    swap_centroids();
-  }
+  normalize_centroids();
 
-  /*
+#ifdef ENABLE_DEBUG_CENTROIDS
   Serial.write("buf_int = [");
   for (j = 0; j < BUF_INT_SZ; j++) {
     Serial.print(buf_int[j]);
@@ -141,18 +140,34 @@ void update_centroids(unsigned long len) {
   Serial.write(", ");
   Serial.print(centroid[1]);
   Serial.write(")\n");
-  */
+#endif
 
   buf_int_i = (buf_int_i + 1) % BUF_INT_SZ;
 }
 
-void swap_centroids() {
+void normalize_centroids() {
   unsigned long tmp;
 
-  tmp = centroid[0];
-  centroid[0] = centroid[1];
-  centroid[1] = tmp;
+  if (centroid[0] > centroid[1]) {
+    tmp = centroid[0];
+    centroid[0] = centroid[1];
+    centroid[1] = tmp;
+  }
 }
+
+char morse_decode_char(const char *enc) {
+  int i;
+
+  for (i = 0; i < sizeof(morse_table); i++) {
+    if (strncmp(morse_table[i] + 1, enc, BUF_SZ) == 0) {
+      return *morse_table[i];
+    }
+  }
+
+  return '\0';
+}
+
+#ifdef ENABLE_INPUT
 
 const char *morse_encode_char(char ch) {
   int i;
@@ -168,18 +183,6 @@ const char *morse_encode_char(char ch) {
     }
   }
   return NULL;
-}
-
-char morse_decode_char(const char *enc) {
-  int i;
-
-  for (i = 0; i < sizeof(morse_table); i++) {
-    if (strncmp(morse_table[i] + 1, enc, BUF_SZ) == 0) {
-      return *morse_table[i];
-    }
-  }
-
-  return '\0';
 }
 
 void morse_out(const char *enc) {
@@ -210,6 +213,8 @@ void morse_out(const char *enc) {
   }
 }
 
+#endif  /* defined ENABLE_INPUT */
+
 void morse_in(int key_state, unsigned long now) {
   unsigned long len;
 
@@ -223,32 +228,11 @@ void morse_in(int key_state, unsigned long now) {
     return;
   }
 
-  /*
-  Serial.print(now);
-  Serial.write(": ");
-  Serial.print(key_state);
-  Serial.write('\n');
-  */
-
   if (!key_state && recv_i < BUF_SZ) {
     len = now - last_key_millis;
     char ch = classify_interval(len);
     buf_recv[recv_i++] = ch;
-    //Serial.write(ch);
-
     update_centroids(len);
-
-    /*
-    Serial.write("centroids = (");
-    Serial.print(centroid[0]);
-    Serial.write(", ");
-    Serial.print(centroid[1]);
-    Serial.write("); len = ");
-    Serial.print(len);
-    Serial.write("; ch = ");
-    Serial.print(ch);
-    Serial.write('\n');
-    */
   }
 
   last_key_state = key_state;
@@ -263,8 +247,18 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(KEY_PIN, INPUT_PULLUP);
   digitalWrite(LED_PIN, LOW);
-  Serial.begin(9600);
 
+#if defined ENABLE_INPUT \
+      || !defined ENABLE_KEYBOARD_OUTPUT \
+      || defined ENABLE_DEBUG_CENTROIDS
+  Serial.begin(9600);
+#endif
+
+#ifdef ENABLE_KEYBOARD_OUTPUT
+  Keyboard.begin();
+#endif
+
+  // Fill the interval buffer from default centroids.
   for (i = 0; i < BUF_INT_SZ; i++) {
     buf_int[i] = centroid[i % 2];
   }
@@ -281,16 +275,24 @@ void loop() {
     buf_recv[recv_i] = '\0';
     ch = morse_decode_char(buf_recv);
     if (ch) {
+#ifdef ENABLE_KEYBOARD_OUTPUT
+      Keyboard.write(ch);
+#else
       Serial.write(ch);
-      //Serial.write('\n');
+#ifdef ENABLE_DEBUG_CENTROIDS
+      Serial.write('\n');
+#endif  /* ENABLE_DEBUG_CENTROIDS */
+#endif  /* !defined ENABLE_KEYBOARD_OUTPUT */
     }
     recv_i = 0;
   }
 
+#ifdef ENABLE_INPUT
   ch = Serial.read();
   if (ch >= 0) {
     morse_out(morse_encode_char(ch));
   }
+#endif
 
   delay(5);
 }
