@@ -53,16 +53,25 @@ const char morse_table[][ENC_SZ + 2] = {
   MORSE_CHAR("0", "-----")
 };
 
+// Receive buffer storing dits and dahs.
 int recv_i = 0;
 char buf_recv[BUF_SZ];
+
+// The last keying state and timestamp, set by morse_in.
 unsigned long last_key_millis;
 boolean last_key_state = false;
+
+// Ring buffer of interval lengths for computing centroids.
 unsigned long buf_int[BUF_INT_SZ];
 int buf_int_i = 0;
 unsigned long centroid[2] = { 100, 300 };
 
 static unsigned long distance(unsigned long a, unsigned long b) {
-  return abs(a - b);
+  if (a > b) {
+    return a - b;
+  } else {
+    return b - a;
+  }
 }
 
 int get_centroid(unsigned long len) {
@@ -74,6 +83,16 @@ int get_centroid(unsigned long len) {
 }
 
 char classify_interval(unsigned long len) {
+  /*
+  Serial.write("centroids = (");
+  Serial.print(centroid[0]);
+  Serial.write(", ");
+  Serial.print(centroid[1]);
+  Serial.write("); len = ");
+  Serial.print(len);
+  Serial.write('\n');
+  */
+ 
   if ((centroid[1] < centroid[0]) != (get_centroid(len) == 0)) {
     return '.';
   } else {
@@ -100,8 +119,19 @@ void update_centroids(unsigned long len) {
       centroid[k] = centroid_sums[k] / centroid_matches[k];
     }
   }
+  if (centroid[0] > centroid[1]) {
+    swap_centroids();
+  }
 
   buf_int_i = (buf_int_i + 1) % BUF_INT_SZ;
+}
+
+void swap_centroids() {
+  unsigned long tmp;
+
+  tmp = centroid[0];
+  centroid[0] = centroid[1];
+  centroid[1] = tmp;
 }
 
 const char *morse_encode_char(char ch) {
@@ -173,12 +203,32 @@ void morse_in(int key_state, unsigned long now) {
     return;
   }
 
+  /*
+  Serial.print(now);
+  Serial.write(": ");
+  Serial.print(key_state);
+  Serial.write('\n');
+  */
+
   if (!key_state && recv_i < BUF_SZ) {
     len = now - last_key_millis;
     char ch = classify_interval(len);
     buf_recv[recv_i++] = ch;
     //Serial.write(ch);
+
     update_centroids(len);
+
+/*
+    Serial.write("centroids = (");
+    Serial.print(centroid[0]);
+    Serial.write(", ");
+    Serial.print(centroid[1]);
+    Serial.write("); len = ");
+    Serial.print(len);
+    Serial.write("; ch = ");
+    Serial.print(ch);
+    Serial.write('\n');
+*/
   }
 
   last_key_state = key_state;
@@ -212,6 +262,7 @@ void loop() {
     ch = morse_decode_char(buf_recv);
     if (ch) {
       Serial.write(ch);
+//      Serial.write('\n');
     }
     recv_i = 0;
   }
