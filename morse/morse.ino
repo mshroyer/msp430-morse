@@ -8,13 +8,13 @@
 #include <Keyboard.h>
 
 // Enable input over serial to output to the LED.
-#define ENABLE_INPUT 1
+//#define ENABLE_INPUT 1
 
 // Output decoded characters to USB keyboard instead of serial.
-//#define ENABLE_KEYBOARD_OUTPUT 1
+#define ENABLE_KEYBOARD_OUTPUT 1
 
 // Output centroid debugging info over serial.
-#define ENABLE_DEBUG_CENTROIDS 1
+//#define ENABLE_DEBUG_CENTROIDS 1
 
 #define ENC_SZ 5
 #define KEY_PIN 12
@@ -24,6 +24,8 @@
 #define BUF_INT_SZ 32
 
 #define MORSE_CHAR(ch, enc) ch enc
+#define DIT centroid[0]
+#define DAH centroid[1]
 
 const char morse_table[][ENC_SZ + 2] = {
   MORSE_CHAR("A", ".-"),
@@ -94,7 +96,7 @@ int get_centroid(unsigned long len) {
 }
 
 char classify_interval(unsigned long len) {
-  if ((centroid[1] < centroid[0]) != (get_centroid(len) == 0)) {
+  if (get_centroid(len) == 0) {
     return '.';
   } else {
     return '-';
@@ -190,28 +192,24 @@ const char *morse_encode_char(char ch) {
 }
 
 void morse_out(const char *enc) {
-  boolean inverted = centroid[1] < centroid[0];
-  unsigned long dit = inverted ? centroid[1] : centroid[0];
-  unsigned long dah = inverted ? centroid[0] : centroid[1];
-
   while (enc != NULL) {
     switch (*(enc++)) {
       case '.':
         digitalWrite(LED_PIN, HIGH);
-        delay(dit);
+        delay(DIT);
         digitalWrite(LED_PIN, LOW);
-        delay(dit);
+        delay(DIT);
         break;
 
       case '-':
         digitalWrite(LED_PIN, HIGH);
-        delay(dah);
+        delay(DAH);
         digitalWrite(LED_PIN, LOW);
-        delay(dit);
+        delay(DIT);
         break;
 
       default:
-        delay(dah);
+        delay(DAH);
         return;
     }
   }
@@ -274,8 +272,7 @@ void loop() {
   char ch;
 
   morse_in(key_state, now);
-  if (!last_key_state && recv_i != 0
-      && classify_interval(now - last_key_millis) == '-') {
+  if (!last_key_state && recv_i != 0 && now - last_key_millis >= DAH) {
     buf_recv[recv_i] = '\0';
     ch = morse_decode_char(buf_recv);
     if (ch) {
