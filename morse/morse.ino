@@ -10,7 +10,7 @@
 #define LED_PIN 13
 #define CODE_DEBOUNCE_MILLIS 25
 #define BUF_SZ 8
-#define BUF_INT_SZ 16
+#define BUF_INT_SZ 32
 
 #define MORSE_CHAR(ch, enc) ch enc
 
@@ -110,6 +110,11 @@ void update_centroids(unsigned long len) {
   centroid[0] = 100;
   centroid[1] = 300;
   for (i = 0; i < 100; i++) {
+    centroid_sums[0] = 0;
+    centroid_sums[1] = 0;
+    centroid_matches[0] = 0;
+    centroid_matches[1] = 0;
+
     for (j = 0; j < BUF_INT_SZ; j++) {
       k = get_centroid(buf_int[j]);
       centroid_sums[k] += buf_int[j];
@@ -122,6 +127,21 @@ void update_centroids(unsigned long len) {
   if (centroid[0] > centroid[1]) {
     swap_centroids();
   }
+
+  /*
+  Serial.write("buf_int = [");
+  for (j = 0; j < BUF_INT_SZ; j++) {
+    Serial.print(buf_int[j]);
+    if (j < BUF_INT_SZ - 1) {
+      Serial.write(", ");
+    }
+  }
+  Serial.write("]; centroid = (");
+  Serial.print(centroid[0]);
+  Serial.write(", ");
+  Serial.print(centroid[1]);
+  Serial.write(")\n");
+  */
 
   buf_int_i = (buf_int_i + 1) % BUF_INT_SZ;
 }
@@ -218,7 +238,7 @@ void morse_in(int key_state, unsigned long now) {
 
     update_centroids(len);
 
-/*
+    /*
     Serial.write("centroids = (");
     Serial.print(centroid[0]);
     Serial.write(", ");
@@ -228,7 +248,7 @@ void morse_in(int key_state, unsigned long now) {
     Serial.write("; ch = ");
     Serial.print(ch);
     Serial.write('\n');
-*/
+    */
   }
 
   last_key_state = key_state;
@@ -262,7 +282,7 @@ void loop() {
     ch = morse_decode_char(buf_recv);
     if (ch) {
       Serial.write(ch);
-//      Serial.write('\n');
+      //Serial.write('\n');
     }
     recv_i = 0;
   }
