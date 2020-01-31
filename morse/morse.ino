@@ -6,8 +6,8 @@
 */
 
 #define ENC_SZ 5
-#define KEY_PIN PUSH2
-#define LED_PIN GREEN_LED
+#define KEY_PIN 12
+#define LED_PIN 13
 #define CODE_DEBOUNCE_MILLIS 25
 #define BUF_SZ 8
 #define BUF_INT_SZ 16
