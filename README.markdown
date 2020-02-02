@@ -11,3 +11,6 @@ on pushbutton S2 are decoded and written to the microcontroller's UART.
 This program relies on the MSP430G2553's hardware UART, and so requires the
 LaunchPad's jumpers to be
 [configured accordingly](https://github.com/energia/Energia/wiki/Serial-Communication#wiki-Hardware_Configuration).
+
+## Note
+This repository is superseded by [https://github.com/mshroyer/mcu-morse](https://github.com/mshroyer/mcu-morse), with updated code supporting the ATmega32u4 as well as other Arduino-compatible microcontrollers.
